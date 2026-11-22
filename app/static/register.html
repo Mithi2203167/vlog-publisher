@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Register - Vlog and Article Publisher</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 460px; margin: 40px auto; padding: 0 16px; color: #1f2933; }
+  h1 { font-size: 22px; }
+  input { display: block; width: 100%; box-sizing: border-box; margin: 4px 0 10px; padding: 8px; }
+  button { background: #1f4e78; color: #fff; border: 0; border-radius: 4px; padding: 8px 14px; cursor: pointer; }
+  .status { color: #52606d; font-size: 14px; min-height: 20px; margin-top: 10px; }
+  a { color: #1f4e78; }
+</style>
+</head>
+<body>
+<h1>Register as an author</h1>
+<p>Register once to write articles and vlogs. Readers do not need to register.</p>
+<label for="author-name">Name</label>
+<input id="author-name" placeholder="Your name">
+<label for="author-email">Email</label>
+<input id="author-email" placeholder="you@example.com">
+<button id="author-btn">Register</button>
+<div id="author-status" class="status"></div>
+<p><a id="continue-link" href="/" hidden>Continue to write a post</a></p>
+<p><a href="/">Back to the home page</a></p>
+
+<script>
+async function api(method, path, data) {
+  const response = await fetch(path, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: data ? JSON.stringify(data) : undefined,
+  });
+  const json = await response.json();
+  if (!response.ok) throw new Error(json.error || "request failed");
+  return json;
+}
+
+document.getElementById("author-btn").onclick = async () => {
+  const status = document.getElementById("author-status");
+  try {
+    const author = await api("POST", "/authors", {
+      name: document.getElementById("author-name").value,
+      email: document.getElementById("author-email").value,
+    });
+    try {
+      localStorage.setItem("authorId", author.id);
+      localStorage.setItem("authorName", author.name);
+      status.textContent = "Registered as " + author.name;
+    } catch (storageError) {
+      status.textContent = "Registered as " + author.name + ", but this browser blocks saving. Writing will not work here.";
+    }
+    document.getElementById("continue-link").hidden = false;
+  } catch (error) { status.textContent = "Error: " + error.message; }
+};
+</script>
+</body>
+</html>

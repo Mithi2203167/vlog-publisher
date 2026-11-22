@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vlog and Article Publisher</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; color: #1f2933; }
+  h1 { font-size: 22px; }
+  section { border: 1px solid #cbd2d9; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+  h2 { font-size: 16px; margin-top: 0; }
+  input, select, textarea { display: block; width: 100%; box-sizing: border-box; margin: 4px 0 8px; padding: 6px; }
+  button { background: #1f4e78; color: #fff; border: 0; border-radius: 4px; padding: 6px 12px; cursor: pointer; }
+  .status { color: #52606d; font-size: 13px; min-height: 18px; }
+  .item { border-top: 1px solid #e4e7eb; padding: 8px 0; }
+  .comment-list div { font-size: 13px; padding: 2px 0; }
+  .content { white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>Vlog and Article Publisher</h1>
+
+<section>
+  <div class="status"><span id="who"></span> <a id="register-link" href="/register">Register here</a></div>
+</section>
+
+<section>
+  <h2>1. Write a post and submit it for review</h2>
+  <select id="post-kind">
+    <option value="article">article</option>
+    <option value="vlog">vlog</option>
+  </select>
+  <input id="post-title" placeholder="Title">
+  <textarea id="post-body" rows="3" placeholder="Article text"></textarea>
+  <input id="post-url" placeholder="Video link (vlog)">
+  <button id="post-btn">Save and submit</button>
+  <div id="post-status" class="status"></div>
+</section>
+
+<section>
+  <h2>2. Editor: pending posts</h2>
+  <div id="pending-list"></div>
+  <div id="review-status" class="status"></div>
+</section>
+
+<section>
+  <h2>3. Published posts (anyone can read and comment)</h2>
+  <div id="published-list"></div>
+</section>
+
+<script>
+let authorId = null;
+let authorName = null;
+try {
+  authorId = Number(localStorage.getItem("authorId")) || null;
+  authorName = localStorage.getItem("authorName");
+} catch (storageError) { /* storage blocked: treated as not registered */ }
+
+async function api(method, path, data) {
+  const response = await fetch(path, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: data ? JSON.stringify(data) : undefined,
+  });
+  const json = await response.json();
+  if (!response.ok) throw new Error(json.error || "request failed");
+  return json;
+}
+
+function setText(id, text) { document.getElementById(id).textContent = text; }
+
+const who = document.getElementById("who");
+if (authorId) {
+  who.textContent = "Writing as " + authorName + ".";
+  document.getElementById("register-link").textContent = "Register another author";
+} else {
+  who.textContent = "You are not registered, so you can read and comment but not write.";
+}
+
+document.getElementById("post-btn").onclick = async () => {
+  try {
+    if (!authorId) throw new Error("please register first");
+    const post = await api("POST", "/posts", {
+      kind: document.getElementById("post-kind").value,
+      author_id: authorId,
+      title: document.getElementById("post-title").value,
+      body: document.getElementById("post-body").value,
+      video_url: document.getElementById("post-url").value,
+    });
+    const submitted = await api("POST", "/posts/" + post.id + "/submit");
+    setText("post-status", "Submitted: " + submitted.title + " (" + submitted.status + ")");
+    await refresh();
+  } catch (error) { setText("post-status", "Error: " + error.message); }
+};
+
+function makeItem(post) {
+  const item = document.createElement("div");
+  item.className = "item";
+  const title = document.createElement("b");
+  title.textContent = post.title;
+  item.append(title, " (" + post.kind + ")");
+  return item;
+}
+
+function addContent(item, post) {
+  if (post.kind === "article") {
+    const text = document.createElement("p");
+    text.className = "content";
+    text.textContent = post.body;
+    item.append(text);
+  } else if (/^https?:\/\//.test(post.video_url || "")) {
+    const link = document.createElement("a");
+    link.className = "video-link";
+    link.href = post.video_url;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.textContent = "Watch the video";
+    const wrapper = document.createElement("p");
+    wrapper.append(link);
+    item.append(wrapper);
+  }
+}
+
+async function refresh() {
+  const pending = await api("GET", "/posts?status=pending");
+  const pendingList = document.getElementById("pending-list");
+  pendingList.replaceChildren();
+  for (const post of pending) {
+    const item = makeItem(post);
+    const button = document.createElement("button");
+    button.className = "approve-btn";
+    button.textContent = "Approve";
+    button.onclick = async () => {
+      try { await api("POST", "/posts/" + post.id + "/approve"); await refresh(); }
+      catch (error) { setText("review-status", "Error: " + error.message); }
+    };
+    item.append(" ", button);
+    pendingList.append(item);
+  }
+
+  const published = await api("GET", "/posts?status=published");
+  const publishedList = document.getElementById("published-list");
+  publishedList.replaceChildren();
+  for (const post of published) {
+    const item = makeItem(post);
+    item.classList.add("post-item");
+    addContent(item, post);
+    const name = document.createElement("input");
+    name.className = "comment-name";
+    name.placeholder = "Your name";
+    const text = document.createElement("input");
+    text.className = "comment-text";
+    text.placeholder = "Comment";
+    const button = document.createElement("button");
+    button.className = "comment-btn";
+    button.textContent = "Post comment";
+    const list = document.createElement("div");
+    list.className = "comment-list";
+    const loadComments = async () => {
+      list.replaceChildren();
+      for (const comment of await api("GET", "/posts/" + post.id + "/comments")) {
+        const line = document.createElement("div");
+        line.textContent = comment.name + ": " + comment.text;
+        list.append(line);
+      }
+    };
+    button.onclick = async () => {
+      try {
+        await api("POST", "/posts/" + post.id + "/comments", { name: name.value, text: text.value });
+        await loadComments();
+      } catch (error) { list.textContent = "Error: " + error.message; }
+    };
+    item.append(name, text, button, list);
+    publishedList.append(item);
+    await loadComments();
+  }
+}
+
+refresh();
+</script>
+</body>
+</html>
