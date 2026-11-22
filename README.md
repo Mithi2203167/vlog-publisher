@@ -72,8 +72,3 @@ network call where a test must be isolated; other tests use an in-memory SQLite 
 ## Process model
 
 Incremental: each module is built and tested as its own increment on its own feature branch.
-
-## AI use statement
-
-AI (Claude) was used to generate the initial code and tests. See the report for which parts were
-reviewed, changed and verified by the author.
